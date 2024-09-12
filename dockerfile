@@ -1,5 +1,5 @@
 # pythonのバージョンは任意
-FROM python:3.8
+FROM python:3.9
 
 WORKDIR /usr/src/app
 ENV FLASK_APP=app
