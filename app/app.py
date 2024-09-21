@@ -36,6 +36,8 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
+if 'AWS_LAMBDA_FUNCTION_NAME' not in os.environ:
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
 @app.route("/")
 def hello_world():
@@ -143,6 +145,3 @@ def lambda_handler(event, context):
     event['path'] = event['requestContext']['http']['path']
     event['queryStringParameters'] = event.get('queryStringParameters', {})
     return awsgi.response(app, event, context)
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
