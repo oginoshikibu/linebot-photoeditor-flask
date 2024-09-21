@@ -1,6 +1,9 @@
 # terraform output
 output/
 
+# image files
+image/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

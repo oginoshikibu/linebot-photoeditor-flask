@@ -45,11 +45,9 @@ if not IS_AWS_LAMBDA:
 def hello_world():
     return "Hello World!"
 
-@app.route("/image", methods=["GET"])
-def get_image():
-    return send_file("image.jpg")
-
-
+@app.route("/image/<filename>", methods=["GET"])
+def get_image(filename):
+    return send_file("image/" + filename, mimetype='image/png')
 
 @app.route("/callback", methods=['POST'])
 def callback():
