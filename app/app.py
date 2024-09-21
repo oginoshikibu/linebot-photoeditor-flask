@@ -17,7 +17,9 @@ from linebot.models import (
 from PIL import Image
 import io
 
-if 'ENV_FILE' in os.environ:
+IS_AWS_LAMBDA = 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
+
+if IS_AWS_LAMBDA:
     # AWS Lambda環境(.envをterraformでENV_FILEにbase64エンコードして環境変数に設定済み)
     env_file_content = base64.b64decode(os.environ['ENV_FILE'])
     env_file_str = env_file_content.decode('utf-8')
@@ -36,7 +38,7 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-if 'AWS_LAMBDA_FUNCTION_NAME' not in os.environ:
+if not IS_AWS_LAMBDA:
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 @app.route("/")
