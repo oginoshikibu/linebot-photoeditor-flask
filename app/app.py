@@ -1,5 +1,8 @@
+import base64
+from io import StringIO
 import os
 import dotenv
+import awsgi
 from flask import Flask, request, abort
 
 from linebot import (
@@ -12,10 +15,18 @@ from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage,
 )
 
-dotenv.load_dotenv()
+if 'ENV_FILE' in os.environ:
+    # AWS Lambda環境(.envをterraformでENV_FILEにbase64エンコードして環境変数に設定済み)
+    env_file_content = base64.b64decode(os.environ['ENV_FILE'])
+    env_file_str = env_file_content.decode('utf-8')
+    env_file = StringIO(env_file_str)
+    dotenv.load_dotenv(stream=env_file)
+else:
+    # ローカル環境
+    dotenv.load_dotenv('.env')
 
-CHANNEL_ACCESS_TOKEN=os.environ["CHANNEL_ACCESS_TOKEN"]
-CHANNEL_SECRET=os.environ["CHANNEL_SECRET"]
+CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
+CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
 
 
 app = Flask(__name__)
@@ -23,9 +34,11 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
+
 @app.route("/")
 def hello_world():
     return "Hello World!"
+
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -52,6 +65,10 @@ def handle_message(event):
         TextSendMessage(text=event.message.text))
 
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
-
+def lambda_handler(event, context):
+    # lambdaのURLsからのリクエストをFlaskのリクエストに変換
+    # https://github.com/slank/awsgi/issues/73
+    event['httpMethod'] = event['requestContext']['http']['method']
+    event['path'] = event['requestContext']['http']['path']
+    event['queryStringParameters'] = event.get('queryStringParameters', {})
+    return awsgi.response(app, event, context)
