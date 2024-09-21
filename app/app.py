@@ -66,6 +66,8 @@ def handle_message(event):
 
 
 def lambda_handler(event, context):
+    # lambdaのURLsからのリクエストをFlaskのリクエストに変換
+    # https://github.com/slank/awsgi/issues/73
     event['httpMethod'] = event['requestContext']['http']['method']
     event['path'] = event['requestContext']['http']['path']
     event['queryStringParameters'] = event.get('queryStringParameters', {})

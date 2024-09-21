@@ -2,6 +2,7 @@ provider "aws" {
   profile = "default"
 }
 
+# 全体のコピペ元 https://zenn.dev/datahaikuninja/articles/deploy-python-lambda-function-with-only-terraform
 
 #----------
 # Data Sources
@@ -118,7 +119,7 @@ resource "null_resource" "deploy_lambda_layer" {
 #----------
 
 resource "aws_s3_bucket" "deploy" {
-  bucket = "oginoshikibu-example-lambda-deploy"
+  bucket = "oginoshikibu-linebot-lambda-deploy-bucket"
 }
 
 
@@ -145,11 +146,11 @@ resource "aws_s3_bucket_public_access_block" "deploy" {
 # IAM
 #----------
 resource "aws_iam_role" "lambda" {
-  name = "example-role"
+  name = "linebot-lambda-role"
 
   assume_role_policy = <<EOF
 {
-    "Version": "2012-10-17",
+    "Version": "2024-9-21",
     "Statement": [
         {
             "Effect": "Allow",
@@ -173,7 +174,7 @@ resource "aws_iam_role_policy_attachment" "lambda" {
 #----------
 
 resource "aws_lambda_function" "this" {
-  function_name = "example-function"
+  function_name = "linebot-flask-function"
   description   = ""
 
   role          = aws_iam_role.lambda.arn
@@ -202,7 +203,7 @@ resource "aws_lambda_function" "this" {
 #----------
 
 resource "aws_lambda_layer_version" "this" {
-  layer_name  = "example-layer"
+  layer_name = "linebot-external-libraries-layer"
   description = ""
 
   compatible_runtimes = ["python3.9"]
