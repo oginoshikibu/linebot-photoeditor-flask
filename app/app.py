@@ -1,8 +1,10 @@
 import base64
-from io import StringIO
 import os
+import io
+
 import dotenv
 import awsgi
+from PIL import Image
 from flask import Flask, request, abort, send_file
 
 from linebot import (
@@ -12,10 +14,9 @@ from linebot.exceptions import (
     InvalidSignatureError
 )
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage, ButtonsTemplate, TemplateSendMessage, PostbackAction, PostbackEvent
+    MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage,
+    ButtonsTemplate, TemplateSendMessage, PostbackAction, PostbackEvent
 )
-from PIL import Image
-import io
 
 IS_AWS_LAMBDA = 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
 
@@ -23,7 +24,7 @@ if IS_AWS_LAMBDA:
     # AWS Lambda環境(.envをterraformでENV_FILEにbase64エンコードして環境変数に設定済み)
     env_file_content = base64.b64decode(os.environ['ENV_FILE'])
     env_file_str = env_file_content.decode('utf-8')
-    env_file = StringIO(env_file_str)
+    env_file = io.StringIO(env_file_str)
     dotenv.load_dotenv(stream=env_file)
 else:
     # ローカル環境
@@ -32,11 +33,14 @@ else:
 CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
 
-
 app = Flask(__name__)
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
+
+
+if not IS_AWS_LAMBDA:
+    IMAGE_SAVE_DIR = os.environ["SAVE_DIR"]
 
 
 @app.route("/")
@@ -47,7 +51,7 @@ def hello_world():
 if not IS_AWS_LAMBDA:
     @app.route("/image/<filename>", methods=["GET"])
     def get_image(filename):
-        image_path = os.path.join("image", filename)
+        image_path = os.path.join(IMAGE_SAVE_DIR, filename)
         if not os.path.exists(image_path):
             abort(404)
         return send_file(image_path, mimetype='image/png')
@@ -89,8 +93,8 @@ def handle_image(event):
 
     # save image
     if not IS_AWS_LAMBDA:
-        image.save(f"image/{message_id}.png")
-        files_count = len(os.listdir("image"))
+        image.save(os.path.join(IMAGE_SAVE_DIR, f"{message_id}.png"))
+        files_count = len(os.listdir(IMAGE_SAVE_DIR))
 
     # 返信
     line_bot_api.reply_message(
@@ -138,7 +142,7 @@ def handle_postback(event):
 
 
 def edit_image():
-    images = [Image.open(f"image/{f}") for f in os.listdir("image")]
+    images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR)]
     # 1枚の1080x1080にまとめる
     width = 1080
     height = 1080/len(images)
@@ -146,14 +150,15 @@ def edit_image():
 
     for i, image in enumerate(images):
 
-        # アス比を維持したまま横幅を1080に縮小
-        image.thumbnail((width, image.height*(width/image.width)))
-        # image.height = heightとなるよう、上下をトリミング
-        image = image.crop((0, (image.height-height)/2, width, (image.height+height)/2))
+        image = image.resize(
+            (width, int(image.height * (width / image.width)))
+        ).crop(
+            (0, (image.height - height) / 2, width, (image.height + height) / 2)
+        )
 
-        new_image.paste(image, (0, int(i*height)))
+        new_image.paste(image, (0, int(i * height)))
 
-    new_image.save("image/merged.png")
+    new_image.save(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
 
 
 def lambda_handler(event, context):
