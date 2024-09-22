@@ -38,16 +38,17 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-if not IS_AWS_LAMBDA:
-    app.run(host='0.0.0.0', port=5000, debug=True)
-
 @app.route("/")
 def hello_world():
     return "Hello World!"
 
-@app.route("/image/<filename>", methods=["GET"])
-def get_image(filename):
-    return send_file("image/" + filename, mimetype='image/png')
+if not IS_AWS_LAMBDA:
+    @app.route("/image/<filename>", methods=["GET"])
+    def get_image(filename):
+        image_path = os.path.join("image", filename)
+        if not os.path.exists(image_path):
+            abort(404)
+        return send_file(image_path, mimetype='image/png')
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -145,3 +146,6 @@ def lambda_handler(event, context):
     event['path'] = event['requestContext']['http']['path']
     event['queryStringParameters'] = event.get('queryStringParameters', {})
     return awsgi.response(app, event, context)
+
+if not IS_AWS_LAMBDA:
+    app.run(host='0.0.0.0', port=5000, debug=True)
