@@ -1,7 +1,7 @@
 import base64
 import os
 import io
-
+import logging
 import dotenv
 import awsgi
 from PIL import Image
@@ -30,17 +30,17 @@ else:
     # ローカル環境
     dotenv.load_dotenv('.env')
 
+app = Flask(__name__)
+if not IS_AWS_LAMBDA:
+    app.logger.setLevel(logging.INFO)
+    IMAGE_SAVE_DIR = os.environ["IMAGE_SAVE_DIR"]
+
 CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
-
-app = Flask(__name__)
+AUTH_USER_ID = os.environ["AUTH_USER_ID"]
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
-
-
-if not IS_AWS_LAMBDA:
-    IMAGE_SAVE_DIR = os.environ["SAVE_DIR"]
 
 
 @app.route("/")
@@ -65,6 +65,15 @@ def callback():
     # get request body as text
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
+
+    # specific user id
+    user_id = request.json['events'][0]['source']['userId']
+    app.logger.info(f"user_id: {user_id}")
+    if user_id != AUTH_USER_ID:
+        line_bot_api.reply_message(
+            request.json['events'][0]['replyToken'],
+            TextSendMessage(text="This line bot is only for specific user, sorry. Please ask admin.")
+        )
 
     # handle webhook body
     try:
