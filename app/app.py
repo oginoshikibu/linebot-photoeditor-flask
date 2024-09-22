@@ -38,9 +38,11 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
+
 @app.route("/")
 def hello_world():
     return "Hello World!"
+
 
 if not IS_AWS_LAMBDA:
     @app.route("/image/<filename>", methods=["GET"])
@@ -49,6 +51,7 @@ if not IS_AWS_LAMBDA:
         if not os.path.exists(image_path):
             abort(404)
         return send_file(image_path, mimetype='image/png')
+
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -87,26 +90,27 @@ def handle_image(event):
     # save image
     if not IS_AWS_LAMBDA:
         image.save(f"image/{message_id}.png")
+        files_count = len(os.listdir("image"))
 
     # 返信
     line_bot_api.reply_message(
         event.reply_token,
         [
-            TextSendMessage(text=f"画像を受け取りました。{image_size=}"),
+            TextSendMessage(text=f"画像を受け取りました。{image_size=}, {files_count=}"),
             TemplateSendMessage(
                 alt_text='Buttons template',
                 template=ButtonsTemplate(
-                    text='写真見る？',
+                    text='結合しますか？',
                     actions=[
                         PostbackAction(
-                            label='見る',
-                            display_text='見る',
-                            data=f"image/{message_id}.png"
+                            label='Yes',
+                            display_text='Yes',
+                            data='yes'
                         ),
                         PostbackAction(
-                            label='見ない',
-                            display_text='見ない',
-                            data="not_show"
+                            label='No',
+                            display_text='No',
+                            data='no'
                         )
                     ]
                 )
@@ -115,16 +119,42 @@ def handle_image(event):
         ]
     )
 
+
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    data = event.postback.data
+    if event.postback.data == 'no':
+        return
+    edit_image()
     line_bot_api.reply_message(
         event.reply_token,
-        ImageSendMessage(
-            original_content_url=f"{os.environ['API_URL']}/{data}",
-            preview_image_url=f"{os.environ['API_URL']}/{data}"
-        )
+        [
+            TextSendMessage(text=f"画像を編集しました。{os.environ['API_URL']}/image/merged.png"),
+            ImageSendMessage(
+                original_content_url=f"{os.environ['API_URL']}/image/merged.png",
+                preview_image_url=f"{os.environ['API_URL']}/image/merged.png",
+            ),
+        ]
     )
+
+
+def edit_image():
+    images = [Image.open(f"image/{f}") for f in os.listdir("image")]
+    # 1枚の1080x1080にまとめる
+    width = 1080
+    height = 1080/len(images)
+    new_image = Image.new('RGB', (width, width))
+
+    for i, image in enumerate(images):
+
+        # アス比を維持したまま横幅を1080に縮小
+        image.thumbnail((width, image.height*(width/image.width)))
+        # image.height = heightとなるよう、上下をトリミング
+        image = image.crop((0, (image.height-height)/2, width, (image.height+height)/2))
+
+        new_image.paste(image, (0, int(i*height)))
+
+    new_image.save("image/merged.png")
+
 
 def lambda_handler(event, context):
     # lambdaのURLsからのリクエストをFlaskのリクエストに変換
@@ -133,6 +163,7 @@ def lambda_handler(event, context):
     event['path'] = event['requestContext']['http']['path']
     event['queryStringParameters'] = event.get('queryStringParameters', {})
     return awsgi.response(app, event, context)
+
 
 if not IS_AWS_LAMBDA:
     app.run(host='0.0.0.0', port=5000, debug=True)
