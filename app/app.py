@@ -1,7 +1,7 @@
 import base64
 import os
 import io
-
+import logging
 import dotenv
 import awsgi
 from PIL import Image
@@ -30,18 +30,15 @@ else:
     # ローカル環境
     dotenv.load_dotenv('.env')
 
+app = Flask(__name__)
+if not IS_AWS_LAMBDA:
+    app.logger.setLevel(logging.INFO)
+    IMAGE_SAVE_DIR = os.environ["IMAGE_SAVE_DIR"]
+
 CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
-
-app = Flask(__name__)
-
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
-
-
-if not IS_AWS_LAMBDA:
-    IMAGE_SAVE_DIR = os.environ["SAVE_DIR"]
-
 
 @app.route("/")
 def hello_world():
