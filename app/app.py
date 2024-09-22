@@ -37,8 +37,11 @@ if not IS_AWS_LAMBDA:
 
 CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
+AUTH_USER_ID = os.environ["AUTH_USER_ID"]
+
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
+
 
 @app.route("/")
 def hello_world():
@@ -62,6 +65,15 @@ def callback():
     # get request body as text
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
+
+    # specific user id
+    user_id = request.json['events'][0]['source']['userId']
+    app.logger.info(f"user_id: {user_id}")
+    if user_id != AUTH_USER_ID:
+        line_bot_api.reply_message(
+            request.json['events'][0]['replyToken'],
+            TextSendMessage(text="Permission denied.")
+        )
 
     # handle webhook body
     try:
