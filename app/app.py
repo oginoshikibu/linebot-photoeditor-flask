@@ -12,7 +12,7 @@ from linebot.exceptions import (
     InvalidSignatureError
 )
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage
+    MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage, ButtonsTemplate, TemplateSendMessage, PostbackAction, PostbackEvent
 )
 from PIL import Image
 import io
@@ -79,65 +79,52 @@ def handle_message(event):
 def handle_image(event):
     message_id = event.message.id
 
-    # message_idから画像のバイナリデータを取得
+    # get image
     message_content = line_bot_api.get_message_content(message_id)
-
-    # バイナリデータをPIL.Imageに変換
     image = Image.open(io.BytesIO(message_content.content))
-
-    # 半分に切る
-    width, height = image.size
-    image = image.crop((0, 0, width // 2, height))
+    image_size = image.size
 
     # save image
-    image.save("image.jpg")
-
+    if not IS_AWS_LAMBDA:
+        image.save(f"image/{message_id}.png")
 
     # 返信
     line_bot_api.reply_message(
         event.reply_token,
         [
-            TextSendMessage(text="画像を受け取りました。"),
-            ImageSendMessage(
-                original_content_url="https://3eb7-126-159-18-222.ngrok-free.app/image",
-                preview_image_url="https://3eb7-126-159-18-222.ngrok-free.app/image"
-            )
+            TextSendMessage(text=f"画像を受け取りました。{image_size=}"),
+            TemplateSendMessage(
+                alt_text='Buttons template',
+                template=ButtonsTemplate(
+                    text='写真見る？',
+                    actions=[
+                        PostbackAction(
+                            label='見る',
+                            display_text='見る',
+                            data=f"image/{message_id}.png"
+                        ),
+                        PostbackAction(
+                            label='見ない',
+                            display_text='見ない',
+                            data="not_show"
+                        )
+                    ]
+                )
+            ),
 
         ]
     )
 
-
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image(event):
-    message_id = event.message.id
-
-    # message_idから画像のバイナリデータを取得
-    message_content = line_bot_api.get_message_content(message_id)
-
-    # バイナリデータをPIL.Imageに変換
-    image = Image.open(io.BytesIO(message_content.content))
-
-    # 半分に切る
-    width, height = image.size
-    image = image.crop((0, 0, width // 2, height))
-
-    # save image
-    image.save("image.jpg")
-
-
-    # 返信
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    data = event.postback.data
     line_bot_api.reply_message(
         event.reply_token,
-        [
-            TextSendMessage(text="画像を受け取りました。"),
-            ImageSendMessage(
-                original_content_url="https://3eb7-126-159-18-222.ngrok-free.app/image",
-                preview_image_url="https://3eb7-126-159-18-222.ngrok-free.app/image"
-            )
-
-        ]
+        ImageSendMessage(
+            original_content_url=f"{os.environ['API_URL']}/{data}",
+            preview_image_url=f"{os.environ['API_URL']}/{data}"
+        )
     )
-
 
 def lambda_handler(event, context):
     # lambdaのURLsからのリクエストをFlaskのリクエストに変換
