@@ -72,7 +72,7 @@ def callback():
     if user_id != AUTH_USER_ID:
         line_bot_api.reply_message(
             request.json['events'][0]['replyToken'],
-            TextSendMessage(text="Permission denied.")
+            TextSendMessage(text="This line bot is only for specific user, sorry. Please ask admin.")
         )
 
     # handle webhook body
