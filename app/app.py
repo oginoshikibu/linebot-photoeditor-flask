@@ -67,13 +67,19 @@ def callback():
     app.logger.info("Request body: " + body)
 
     # specific user id
-    user_id = request.json['events'][0]['source']['userId']
+    try:
+        user_id = request.json['events'][0]['source']['userId']
+    except (KeyError, IndexError):
+        # by webhook verification
+        return 'OK'
+
     app.logger.info(f"user_id: {user_id}")
     if user_id != AUTH_USER_ID:
         line_bot_api.reply_message(
             request.json['events'][0]['replyToken'],
             TextSendMessage(text="This line bot is only for specific user, sorry. Please ask admin.")
         )
+        return 'OK'
 
     # handle webhook body
     try:
@@ -93,6 +99,11 @@ def handle_message(event):
 
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image(event):
+    os.mkdir(IMAGE_SAVE_DIR, exist_ok=True)
+
+    if os.path.exists(IMAGE_SAVE_DIR, "merged.png"):
+        os.remove(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
+
     message_id = event.message.id
 
     # get image
@@ -151,22 +162,26 @@ def handle_postback(event):
 
 
 def edit_image():
-    images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR)]
+    images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR) if f != "merged.png"]
+    for f in os.listdir(IMAGE_SAVE_DIR):
+        os.remove(os.path.join(IMAGE_SAVE_DIR, f))
+
     # 1枚の1080x1080にまとめる
-    width = 1080
-    height = 1080/len(images)
-    new_image = Image.new('RGB', (width, width))
+    ON_A_SIDE = 1080
+    SECTION_HEIGHT = ON_A_SIDE//len(images)
+    new_image = Image.new('RGB', (ON_A_SIDE, ON_A_SIDE))
+    cur_height = 0
 
     for i, image in enumerate(images):
+        aim_height = SECTION_HEIGHT if i != len(images) - 1 else 1080 - cur_height
 
-        image = image.resize(
-            (width, int(image.height * (width / image.width)))
-        ).crop(
-            (0, (image.height - height) / 2, width, (image.height + height) / 2)
-        )
+        image = image.resize((ON_A_SIDE, int(image.height * (ON_A_SIDE / image.width))))
+        image = image.crop((0, (image.height - aim_height) // 2, ON_A_SIDE, (image.height + aim_height) // 2))
 
-        new_image.paste(image, (0, int(i * height)))
+        new_image.paste(image, (0, cur_height))
+        cur_height += image.height
 
+    assert new_image.size == (ON_A_SIDE, ON_A_SIDE)
     new_image.save(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
 
 
