@@ -153,20 +153,21 @@ def handle_postback(event):
 def edit_image():
     images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR)]
     # 1枚の1080x1080にまとめる
-    width = 1080
-    height = 1080/len(images)
-    new_image = Image.new('RGB', (width, width))
+    ON_A_SIDE = 1080
+    SECTION_HEIGHT = ON_A_SIDE//len(images)
+    new_image = Image.new('RGB', (ON_A_SIDE, ON_A_SIDE))
+    cur_height = 0
 
     for i, image in enumerate(images):
+        aim_height = SECTION_HEIGHT if i != len(images) - 1 else 1080 - cur_height
 
-        image = image.resize(
-            (width, int(image.height * (width / image.width)))
-        ).crop(
-            (0, (image.height - height) / 2, width, (image.height + height) / 2)
-        )
+        image = image.resize((ON_A_SIDE, int(image.height * (ON_A_SIDE / image.width))))
+        image = image.crop((0, (image.height - aim_height) // 2, ON_A_SIDE, (image.height + aim_height) // 2))
 
-        new_image.paste(image, (0, int(i * height)))
+        new_image.paste(image, (0, cur_height))
+        cur_height += image.height
 
+    assert new_image.size == (ON_A_SIDE, ON_A_SIDE)
     new_image.save(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
 
 
