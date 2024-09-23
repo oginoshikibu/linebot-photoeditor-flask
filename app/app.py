@@ -67,13 +67,19 @@ def callback():
     app.logger.info("Request body: " + body)
 
     # specific user id
-    user_id = request.json['events'][0]['source']['userId']
+    try:
+        user_id = request.json['events'][0]['source']['userId']
+    except (KeyError, IndexError):
+        # by webhook verification
+        return 'OK'
+
     app.logger.info(f"user_id: {user_id}")
     if user_id != AUTH_USER_ID:
         line_bot_api.reply_message(
             request.json['events'][0]['replyToken'],
             TextSendMessage(text="This line bot is only for specific user, sorry. Please ask admin.")
         )
+        return 'OK'
 
     # handle webhook body
     try:
