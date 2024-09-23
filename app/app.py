@@ -93,6 +93,11 @@ def handle_message(event):
 
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image(event):
+    os.mkdir(IMAGE_SAVE_DIR, exist_ok=True)
+
+    if os.path.exists(IMAGE_SAVE_DIR, "merged.png"):
+        os.remove(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
+
     message_id = event.message.id
 
     # get image
@@ -151,7 +156,10 @@ def handle_postback(event):
 
 
 def edit_image():
-    images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR)]
+    images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR) if f != "merged.png"]
+    for f in os.listdir(IMAGE_SAVE_DIR):
+        os.remove(os.path.join(IMAGE_SAVE_DIR, f))
+
     # 1枚の1080x1080にまとめる
     ON_A_SIDE = 1080
     SECTION_HEIGHT = ON_A_SIDE//len(images)
