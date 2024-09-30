@@ -1,5 +1,6 @@
 import base64
 import os
+import requests
 import io
 import logging
 import dotenv
@@ -18,6 +19,7 @@ from linebot.models import (
     ButtonsTemplate, TemplateSendMessage, PostbackAction, PostbackEvent
 )
 
+
 IS_AWS_LAMBDA = 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
 
 if IS_AWS_LAMBDA:
@@ -29,6 +31,35 @@ if IS_AWS_LAMBDA:
 else:
     # ローカル環境
     dotenv.load_dotenv('.env')
+
+GYAZO_ACCESS_TOKEN = os.environ["GYAZO_ACCESS_TOKEN"]
+
+# Gyazo API
+
+
+def get_images_list() -> requests.Response:
+    url = f"https://api.gyazo.com/api/images?access_token={GYAZO_ACCESS_TOKEN}"
+    response = requests.request("GET", url)
+    return response
+
+
+def delete_image(image_id: str) -> requests.Response:
+    url = f"https://api.gyazo.com/api/images/{image_id}?access_token={GYAZO_ACCESS_TOKEN}"
+    response = requests.request("DELETE", url)
+    return response
+
+def upload_image(image: Image) -> requests.Response:
+    url = f"https://upload.gyazo.com/api/upload"
+    image_byte_array = io.BytesIO()
+    image.save(image_byte_array, format="PNG")
+    image_byte_array.seek(0)
+    files = {
+        'access_token': GYAZO_ACCESS_TOKEN,
+        'imagedata': image_byte_array
+    }
+    response = requests.request("POST", url, files=files)
+    return response
+
 
 app = Flask(__name__)
 if not IS_AWS_LAMBDA:
@@ -92,9 +123,11 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    response = get_images_list()
+    txt = response.text
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=event.message.text))
+        TextSendMessage(text=txt))
 
 
 @handler.add(MessageEvent, message=ImageMessage)
