@@ -150,7 +150,7 @@ resource "aws_iam_role" "lambda" {
 
   assume_role_policy = <<EOF
 {
-    "Version": "2024-9-21",
+    "Version": "2012-10-17",
     "Statement": [
         {
             "Effect": "Allow",
@@ -188,14 +188,19 @@ resource "aws_lambda_function" "this" {
 
   layers = [aws_lambda_layer_version.this.arn]
 
-  memory_size = 256
-  timeout     = 3
+  memory_size = 1024
+  timeout     = 60
 
   environment {
-      variables = {
-        ENV_FILE = filebase64("${path.module}/app/.env")
-      }
+    variables = {
+      ENV_FILE = filebase64("${path.module}/app/.env")
+    }
   }
+}
+
+resource "aws_lambda_function_url" "this_url" {
+  function_name      = aws_lambda_function.this.function_name
+  authorization_type = "NONE"
 }
 
 #----------
@@ -203,7 +208,7 @@ resource "aws_lambda_function" "this" {
 #----------
 
 resource "aws_lambda_layer_version" "this" {
-  layer_name = "linebot-external-libraries-layer"
+  layer_name  = "linebot-external-libraries-layer"
   description = ""
 
   compatible_runtimes = ["python3.9"]
@@ -211,6 +216,4 @@ resource "aws_lambda_layer_version" "this" {
   s3_bucket        = aws_s3_bucket.deploy.bucket
   s3_key           = data.aws_s3_object.lambda_layer_archive.key
   source_code_hash = data.aws_s3_object.lambda_layer_archive_hash.body
-
-
 }
