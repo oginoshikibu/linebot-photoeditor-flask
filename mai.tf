@@ -150,7 +150,7 @@ resource "aws_iam_role" "lambda" {
 
   assume_role_policy = <<EOF
 {
-    "Version": "2024-9-21",
+    "Version": "2012-10-17",
     "Statement": [
         {
             "Effect": "Allow",
