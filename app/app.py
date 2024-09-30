@@ -42,6 +42,10 @@ def get_images_list() -> requests.Response:
     response = requests.request("GET", url)
     return response
 
+def get_image(image_url: str) -> Image:
+    response = requests.request("GET", image_url)
+    image = Image.open(io.BytesIO(response.content))
+    return image
 
 def delete_image(image_id: str) -> requests.Response:
     url = f"https://api.gyazo.com/api/images/{image_id}?access_token={GYAZO_ACCESS_TOKEN}"
