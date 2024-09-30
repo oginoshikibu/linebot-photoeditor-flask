@@ -1,24 +1,19 @@
 import base64
-import os
-import requests
 import io
+import json
 import logging
-import dotenv
+import os
+
 import awsgi
+import dotenv
+import requests
+from flask import Flask, abort, request
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import (ButtonsTemplate, ImageMessage, ImageSendMessage,
+                            MessageEvent, PostbackAction, PostbackEvent,
+                            TemplateSendMessage, TextMessage, TextSendMessage)
 from PIL import Image
-from flask import Flask, request, abort, send_file
-
-from linebot import (
-    LineBotApi, WebhookHandler
-)
-from linebot.exceptions import (
-    InvalidSignatureError
-)
-from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage,
-    ButtonsTemplate, TemplateSendMessage, PostbackAction, PostbackEvent
-)
-
 
 IS_AWS_LAMBDA = 'AWS_LAMBDA_FUNCTION_NAME' in os.environ
 
@@ -32,176 +27,212 @@ else:
     # ローカル環境
     dotenv.load_dotenv('.env')
 
+
+app = Flask(__name__)
+if not IS_AWS_LAMBDA:
+    app.logger.setLevel(logging.INFO)
+
+CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
+CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
+AUTH_USER_ID = os.environ["AUTH_USER_ID"]
 GYAZO_ACCESS_TOKEN = os.environ["GYAZO_ACCESS_TOKEN"]
 
-# Gyazo API
+line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(CHANNEL_SECRET)
 
 
 def get_images_list() -> requests.Response:
     url = f"https://api.gyazo.com/api/images?access_token={GYAZO_ACCESS_TOKEN}"
     response = requests.request("GET", url)
+    app.logger.info(json.dumps(response.json(), indent=2))
     return response
+
 
 def get_image(image_url: str) -> Image:
     response = requests.request("GET", image_url)
     image = Image.open(io.BytesIO(response.content))
     return image
 
+
 def delete_image(image_id: str) -> requests.Response:
     url = f"https://api.gyazo.com/api/images/{image_id}?access_token={GYAZO_ACCESS_TOKEN}"
     response = requests.request("DELETE", url)
+    app.logger.info(json.dumps(response.json(), indent=2))
     return response
 
+
 def upload_image(image: Image) -> requests.Response:
-    url = f"https://upload.gyazo.com/api/upload"
+    url = f"https://upload.gyazo.com/api/upload?access_token={GYAZO_ACCESS_TOKEN}"
     image_byte_array = io.BytesIO()
     image.save(image_byte_array, format="PNG")
     image_byte_array.seek(0)
     files = {
-        'access_token': GYAZO_ACCESS_TOKEN,
         'imagedata': image_byte_array
     }
     response = requests.request("POST", url, files=files)
+    app.logger.info(json.dumps(response.json(), indent=2))
     return response
 
 
-app = Flask(__name__)
-if not IS_AWS_LAMBDA:
-    app.logger.setLevel(logging.INFO)
-    IMAGE_SAVE_DIR = os.environ["IMAGE_SAVE_DIR"]
-
-CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
-CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
-AUTH_USER_ID = os.environ["AUTH_USER_ID"]
-
-line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(CHANNEL_SECRET)
+def delete_all_images():
+    response = get_images_list()
+    images = response.json()
+    for image in images:
+        delete_image(image["image_id"])
+    return
 
 
-@app.route("/")
+def get_all_images() -> list[Image]: # type: ignore
+    response = get_images_list()
+    images = response.json()
+    images.sort(key=lambda x: x["created_at"])
+    image_list = [get_image(image["url"]) for image in images]
+    return image_list
+
+
+@app.route("/")  # ヘルスチェック用
 def hello_world():
     return "Hello World!"
 
 
-if not IS_AWS_LAMBDA:
-    @app.route("/image/<filename>", methods=["GET"])
-    def get_image(filename):
-        image_path = os.path.join(IMAGE_SAVE_DIR, filename)
-        if not os.path.exists(image_path):
-            abort(404)
-        return send_file(image_path, mimetype='image/png')
-
-
-@app.route("/callback", methods=['POST'])
+@app.route("/callback", methods=['POST'])   # LINEからのリクエストを受け取るエンドポイント
 def callback():
-    # get X-Line-Signature header value
     signature = request.headers['X-Line-Signature']
-
-    # get request body as text
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
 
-    # specific user id
     try:
         user_id = request.json['events'][0]['source']['userId']
-    except (KeyError, IndexError):
-        # by webhook verification
+    except (KeyError, IndexError):  # developer consoleからのテスト用
         return 'OK'
 
-    app.logger.info(f"user_id: {user_id}")
-    if user_id != AUTH_USER_ID:
+    if user_id != AUTH_USER_ID:  # 認証ユーザー以外は返信しない
         line_bot_api.reply_message(
             request.json['events'][0]['replyToken'],
             TextSendMessage(text="This line bot is only for specific user, sorry. Please ask admin.")
         )
         return 'OK'
 
-    # handle webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
-
+    except Exception as e:
+        app.logger.error(e)
+        line_bot_api.reply_message(
+            request.json['events'][0]['replyToken'],
+            TextSendMessage(text="Error occurred. Please ask admin.")
+        )
+        abort(500)
     return 'OK'
 
 
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent, message=TextMessage)  # テキストメッセージ時、画像一覧を返信して削除するか確認
 def handle_message(event):
     response = get_images_list()
-    txt = response.text
+    images = response.json()
+    app.logger.info(json.dumps(images, indent=2))
+    if len(images) == 0:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="画像がありません。")
+        )
+        return
+
+    thumb_URLs = [image["thumb_url"] for image in images]
+    main_URLs = [image["url"] for image in images]
+
     line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=txt))
+        event.reply_token, [
+            TextSendMessage(text=f"画像が{len(images)}枚保存されています。"),
+        ]
+        + [
+            ImageSendMessage(
+                original_content_url=main_URL,
+                preview_image_url=thumb_URL
+            ) for main_URL, thumb_URL in zip(main_URLs[:3], thumb_URLs[:3])  # 同時に送信できるmessage数は上限5枚のため
+        ]
+        + [
+            TemplateSendMessage(
+                alt_text='Buttons template',
+                template=ButtonsTemplate(
+                    text=f'{len(images)}枚の画像を削除しますか？',
+                    actions=[
+                        PostbackAction(
+                            label='delete',
+                            display_text='delete',
+                            data='delete'
+                        )
+                    ]))
+        ]
+    )
 
 
-@handler.add(MessageEvent, message=ImageMessage)
+@ handler.add(MessageEvent, message=ImageMessage)   # 画像メッセージ時、uploadして結合するか確認
 def handle_image(event):
-    os.mkdir(IMAGE_SAVE_DIR, exist_ok=True)
-
-    if os.path.exists(IMAGE_SAVE_DIR, "merged.png"):
-        os.remove(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
-
-    message_id = event.message.id
-
     # get image
-    message_content = line_bot_api.get_message_content(message_id)
+    message_content = line_bot_api.get_message_content(event.message.id)
     image = Image.open(io.BytesIO(message_content.content))
     image_size = image.size
-
-    # save image
-    if not IS_AWS_LAMBDA:
-        image.save(os.path.join(IMAGE_SAVE_DIR, f"{message_id}.png"))
-        files_count = len(os.listdir(IMAGE_SAVE_DIR))
+    upload_image(image)
 
     # 返信
     line_bot_api.reply_message(
         event.reply_token,
         [
-            TextSendMessage(text=f"画像を受け取りました。{image_size=}, {files_count=}"),
+            TextSendMessage(text=f"画像を受け取りました。{image_size=}, "),
             TemplateSendMessage(
                 alt_text='Buttons template',
                 template=ButtonsTemplate(
                     text='結合しますか？',
                     actions=[
                         PostbackAction(
-                            label='Yes',
-                            display_text='Yes',
-                            data='yes'
-                        ),
-                        PostbackAction(
-                            label='No',
-                            display_text='No',
-                            data='no'
+                            label='merge',
+                            display_text='merge',
+                            data='merge'
                         )
-                    ]
-                )
-            ),
-
+                    ])),
         ]
     )
 
 
-@handler.add(PostbackEvent)
+@ handler.add(PostbackEvent)    # ポストバック処理（delete, merge）
 def handle_postback(event):
-    if event.postback.data == 'no':
+    if event.postback.data == 'delete':
+        delete_all_images()
+        images = get_images_list().json()
+        if len(images) == 0:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="画像を削除しました。")
+            )
+        else:
+
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=f"画像の削除に失敗しました。\n{len(images)}枚の画像が残っています。\n{json.dumps(images, indent=2)}")
+            )
         return
-    edit_image()
-    line_bot_api.reply_message(
-        event.reply_token,
-        [
-            TextSendMessage(text=f"画像を編集しました。{os.environ['API_URL']}/image/merged.png"),
-            ImageSendMessage(
-                original_content_url=f"{os.environ['API_URL']}/image/merged.png",
-                preview_image_url=f"{os.environ['API_URL']}/image/merged.png",
-            ),
-        ]
-    )
+
+    if event.postback.data == 'merge':
+        response = edit_image().json()
+        thumb_URL = response["thumb_url"]
+        main_URL = response["url"]
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            [
+                TextSendMessage(text=f"画像を編集しました。"),
+                ImageSendMessage(
+                    original_content_url=main_URL,
+                    preview_image_url=thumb_URL
+                ),
+            ]
+        )
 
 
-def edit_image():
-    images = [Image.open(os.path.join(IMAGE_SAVE_DIR, f)) for f in os.listdir(IMAGE_SAVE_DIR) if f != "merged.png"]
-    for f in os.listdir(IMAGE_SAVE_DIR):
-        os.remove(os.path.join(IMAGE_SAVE_DIR, f))
+def edit_image() -> requests.Response:  # 画像を結合してアップロード
+    images = get_all_images()
 
     # 1枚の1080x1080にまとめる
     ON_A_SIDE = 1080
@@ -219,7 +250,9 @@ def edit_image():
         cur_height += image.height
 
     assert new_image.size == (ON_A_SIDE, ON_A_SIDE)
-    new_image.save(os.path.join(IMAGE_SAVE_DIR, "merged.png"))
+    res = upload_image(new_image)
+    app.logger.info(json.dumps(res.json(), indent=2))
+    return res
 
 
 def lambda_handler(event, context):
