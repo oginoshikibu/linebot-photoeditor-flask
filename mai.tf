@@ -198,6 +198,11 @@ resource "aws_lambda_function" "this" {
   }
 }
 
+resource "aws_lambda_function_url" "this_url" {
+  function_name      = aws_lambda_function.this.function_name
+  authorization_type = "NONE"
+}
+
 #----------
 # Lambda layer
 #----------
