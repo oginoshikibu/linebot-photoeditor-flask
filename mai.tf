@@ -192,9 +192,9 @@ resource "aws_lambda_function" "this" {
   timeout     = 3
 
   environment {
-      variables = {
-        ENV_FILE = filebase64("${path.module}/app/.env")
-      }
+    variables = {
+      ENV_FILE = filebase64("${path.module}/app/.env")
+    }
   }
 }
 
@@ -203,7 +203,7 @@ resource "aws_lambda_function" "this" {
 #----------
 
 resource "aws_lambda_layer_version" "this" {
-  layer_name = "linebot-external-libraries-layer"
+  layer_name  = "linebot-external-libraries-layer"
   description = ""
 
   compatible_runtimes = ["python3.9"]
@@ -211,6 +211,4 @@ resource "aws_lambda_layer_version" "this" {
   s3_bucket        = aws_s3_bucket.deploy.bucket
   s3_key           = data.aws_s3_object.lambda_layer_archive.key
   source_code_hash = data.aws_s3_object.lambda_layer_archive_hash.body
-
-
 }
