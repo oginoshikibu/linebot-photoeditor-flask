@@ -188,8 +188,8 @@ resource "aws_lambda_function" "this" {
 
   layers = [aws_lambda_layer_version.this.arn]
 
-  memory_size = 256
-  timeout     = 3
+  memory_size = 1024
+  timeout     = 60
 
   environment {
     variables = {

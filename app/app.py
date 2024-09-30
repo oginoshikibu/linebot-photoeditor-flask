@@ -29,8 +29,7 @@ else:
 
 
 app = Flask(__name__)
-if not IS_AWS_LAMBDA:
-    app.logger.setLevel(logging.INFO)
+app.logger.setLevel(logging.INFO)
 
 CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
@@ -82,7 +81,7 @@ def delete_all_images():
     return
 
 
-def get_all_images() -> list[Image]: # type: ignore
+def get_all_images() -> list[Image]:  # type: ignore
     response = get_images_list()
     images = response.json()
     images.sort(key=lambda x: x["created_at"])
@@ -118,7 +117,7 @@ def callback():
     except InvalidSignatureError:
         abort(400)
     except Exception as e:
-        app.logger.error(e)
+        app.logger.info(e)
         line_bot_api.reply_message(
             request.json['events'][0]['replyToken'],
             TextSendMessage(text="Error occurred. Please ask admin.")
@@ -207,7 +206,6 @@ def handle_postback(event):
                 TextSendMessage(text="画像を削除しました。")
             )
         else:
-
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(text=f"画像の削除に失敗しました。\n{len(images)}枚の画像が残っています。\n{json.dumps(images, indent=2)}")
