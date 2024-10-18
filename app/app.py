@@ -225,6 +225,18 @@ def handle_postback(event):
                     original_content_url=main_URL,
                     preview_image_url=thumb_URL
                 ),
+            ] + [
+                TemplateSendMessage(
+                    alt_text='Buttons template',
+                    template=ButtonsTemplate(
+                        text=f'全ての画像を削除しますか？',
+                        actions=[
+                            PostbackAction(
+                                label='delete',
+                                display_text='delete',
+                                data='delete'
+                            )
+                        ]))
             ]
         )
 
